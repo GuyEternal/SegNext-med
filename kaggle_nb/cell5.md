@@ -1,3 +1,5 @@
+# Update data_utils.py to handle binary segmentation for ISIC dataset
+%%writefile data_utils.py
 import yaml
 with open('config.yaml') as fh:
     config = yaml.load(fh, Loader=yaml.FullLoader)
@@ -153,4 +155,4 @@ pallet_cityscape = np.array([[[0,0,0],
 isic_class_names = ['background', 'lesion']
 
 pallet_isic = np.array([[[0, 0, 0],  # Black for background
-                        [255, 0, 0]]], np.uint8) / 255  # Red for lesion
+                        [255, 0, 0]]], np.uint8) / 255  # Red for lesion 

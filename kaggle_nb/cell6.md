@@ -1,3 +1,6 @@
+```python
+# Update dataloader.py to handle ISIC dataset structure
+%%writefile dataloader.py
 from cv2 import INTER_NEAREST
 import yaml
 
@@ -6,7 +9,6 @@ with open('config.yaml') as fh:
 import torch.utils.data as data
 from fmutils import fmutils as fmu
 from tabulate import tabulate
-# from PIL import Image
 import cv2
 import numpy as np
 import os, random, time
@@ -25,8 +27,6 @@ class GEN_DATA_LISTS():
             sub directories inside the main split (train, test, val) folders
         get_lables_from : TYPE
             where to get the label from either from dir_name of file_name.
-
-
         '''
         self.root_dir = root_dir
         self.sub_dirname = sub_dirname
@@ -52,14 +52,21 @@ class GEN_DATA_LISTS():
             print(os.path.join(self.root_dir, split, self.sub_dirname[1]))
             self.split_lbls.append(os.path.join(self.root_dir, split, self.sub_dirname[1]))
             
-        
-        self.train_f = fmu.get_all_files(self.split_files[0])
-        self.val_f = fmu.get_all_files(self.split_files[1])
-        self.test_f = fmu.get_all_files(self.split_files[2])
+        # Create simple utility function for file collection
+        def get_all_files(path):
+            if not os.path.exists(path):
+                print(f"Warning: {path} does not exist, returning empty list.")
+                return []
+            return [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+            
+        # Get all files from each directory
+        self.train_f = get_all_files(self.split_files[0])
+        self.val_f = get_all_files(self.split_files[1])
+        self.test_f = get_all_files(self.split_files[2])
 
-        self.train_l = fmu.get_all_files(self.split_lbls[0])
-        self.val_l = fmu.get_all_files(self.split_lbls[1])
-        self.test_l = fmu.get_all_files(self.split_lbls[2])
+        self.train_l = get_all_files(self.split_lbls[0])
+        self.val_l = get_all_files(self.split_lbls[1])
+        self.test_l = get_all_files(self.split_lbls[2])
         
         train, val, test = [self.train_f, self.train_l], [self.val_f, self.val_l], [self.test_f, self.test_l]
         
@@ -71,8 +78,8 @@ class GEN_DATA_LISTS():
         else:  # Cityscapes dataset
             cls_names = []
             for i in range(len(self.train_f)):
-                cls_names.append(fmu.get_basename(self.train_f[i]).split('_')[1])
-            classes = sorted(list(set(cls_names)), key=fmu.numericalSort)
+                cls_names.append(os.path.basename(self.train_f[i]).split('_')[1])
+            classes = sorted(list(set(cls_names)))
             return classes
     
     def get_filecounts(self):
@@ -83,42 +90,6 @@ class GEN_DATA_LISTS():
          , 1)
         print(tabulate(np.ndarray.tolist(result), headers = ["Split", "Images", "Labels"], tablefmt="github"))
         return None
-
-class Cityscape(data.Dataset):
-    def __init__(self, img_paths, mask_paths, img_height, img_width, augment_data=False, normalize=False):
-        self.img_paths = img_paths
-        self.mask_paths = mask_paths
-        self.img_height = img_height
-        self.img_width = img_width
-        self.augment_data = augment_data
-        self.normalize = normalize
-        
-    def __len__(self):
-        return len(self.img_paths)
-    
-    def __getitem__(self, index):
-        # random.seed(time.time())
-        data_sample = {}
-        
-        img = cv2.imread(self.img_paths[index])
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # img = cv2.resize(img, (self.img_width, self.img_height), cv2.INTER_LINEAR)
-
-        lbl = cv2.imread(self.mask_paths[index], 0)
-        # lbl = cv2.resize(lbl, (self.img_width, self.img_height), cv2.INTER_NEAREST)
-        lbl = encode_labels(lbl)
-
-        if self.augment_data:
-            # to implement
-            pass
-            
-        if self.normalize:
-            img = std_norm(img)
-        
-        data_sample['img'] = img
-        data_sample['lbl'] = lbl
-
-        return data_sample
 
 class ISICDataset(data.Dataset):
     def __init__(self, img_paths, mask_paths, img_height, img_width, augment_data=False, normalize=False):
@@ -160,4 +131,18 @@ class ISICDataset(data.Dataset):
         data_sample['img'] = img
         data_sample['lbl'] = lbl
 
-        return data_sample 
+        return data_sample
+
+# Create a simple utility module for file operations
+class fmutils:
+    @staticmethod
+    def get_all_files(path):
+        if not os.path.exists(path):
+            print(f"Warning: {path} does not exist, returning empty list.")
+            return []
+        return [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+    
+    @staticmethod
+    def get_basename(path):
+        return os.path.basename(path)
+``` 

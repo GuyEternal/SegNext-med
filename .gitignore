@@ -1,5 +1,8 @@
 dataset/
 __pycache__/
 small_dataset/
+small_isic_dataset/
+processed_isic_dataset/
 checkpoints/
 .gitconfig
+repomix-output.xml

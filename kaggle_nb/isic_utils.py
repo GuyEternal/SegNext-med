@@ -1,17 +1,10 @@
 import math
 import yaml
-
-with open('config.yaml') as fh:
-    config = yaml.load(fh, Loader=yaml.FullLoader)
-
 import cv2, os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from data_utils import (images_transform, masks_transform, torch_imgresizer,
-                        torch_resizer)
 
 class ModelUtils(object):
     def __init__(self, num_classes, chkpt_pth, exp_name):
@@ -30,7 +23,6 @@ class ModelUtils(object):
                     }, os.path.join(self.chkpt_pth, f'{self.exp_name}.pth'))
 
     def load_chkpt(self, model, optimizer=None):
-        
         try:
             print('-> Loading checkpoint')
             chkpt = torch.load(os.path.join(self.chkpt_pth, f'{self.exp_name}.pth'))
@@ -59,18 +51,14 @@ class Trainer(object):
         self.metric.reset()
     
     def training_step(self, batched_data):
-        # Handle differently based on dataset type (binary or multi-class)
-        if config['num_classes'] == 2:  # ISIC binary segmentation
-            # Stack images and convert to tensor
-            img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
-                                    for img in batched_data['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            # Stack labels and convert to tensor, keeping original size
-            lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
-                                    for lbl in batched_data['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-        else:  # Cityscapes multi-class segmentation (original approach)
-            img_batch = images_transform(batched_data['img'])
-            lbl_batch = torch_resizer(masks_transform(batched_data['lbl']))
+        # Handle binary segmentation for ISIC dataset
+        # Stack images and convert to tensor
+        img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
+                               for img in batched_data['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Stack labels and convert to tensor
+        lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
+                               for lbl in batched_data['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
         
         self.optimizer.zero_grad()
 
@@ -100,18 +88,13 @@ class Evaluator(object):
         self.metric.reset()
     
     def eval_step(self, data_batch):
-        # Handle differently based on dataset type (binary or multi-class)
-        if config['num_classes'] == 2:  # ISIC binary segmentation
-            # Stack images and convert to tensor
-            self.img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
-                                    for img in data_batch['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            # Stack labels and convert to tensor, keeping original size
-            lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
-                                    for lbl in data_batch['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-        else:  # Cityscapes multi-class segmentation (original approach)
-            self.img_batch = images_transform(data_batch['img'])
-            lbl_batch = torch_resizer(masks_transform(data_batch['lbl']))
+        # Stack images and convert to tensor
+        self.img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
+                                for img in data_batch['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Stack labels and convert to tensor
+        lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
+                                for lbl in data_batch['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
         
         with torch.no_grad():
             preds = self.model.forward(self.img_batch) # already softmaxed
@@ -122,21 +105,8 @@ class Evaluator(object):
         self.metric.update(self.lbl_batch, self.preds)
         
     def get_sample_prediction(self):
-        # Check if we're working with ISIC binary segmentation
-        if config['num_classes'] == 2:
-            # Get the first image directly from NCHW format
-            img = self.img_batch[0].cpu().permute(1, 2, 0).numpy()
-            lbl = self.lbl_batch[0]
-            pred = self.preds[0]
-            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8)
-        else:
-            # Original approach for Cityscapes
-            self.img_batch = torch_imgresizer(self.img_batch).detach().cpu().numpy()
-            img = np.transpose(self.img_batch[0,...], (1,2,0))
-            lbl = self.lbl_batch[0,...]
-            pred = self.preds[0,...]
-            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8)
-
-
-
-
+        # Get the first image directly from NCHW format
+        img = self.img_batch[0].cpu().permute(1, 2, 0).numpy()
+        lbl = self.lbl_batch[0]
+        pred = self.preds[0]
+        return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8) 

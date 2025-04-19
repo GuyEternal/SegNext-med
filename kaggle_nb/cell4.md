@@ -1,3 +1,5 @@
+# Update utils.py to properly handle the ISIC dataset
+%%writefile utils.py
 import math
 import yaml
 
@@ -135,8 +137,4 @@ class Evaluator(object):
             img = np.transpose(self.img_batch[0,...], (1,2,0))
             lbl = self.lbl_batch[0,...]
             pred = self.preds[0,...]
-            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8)
-
-
-
-
+            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8) 
