@@ -1,0 +1,59 @@
+# Configuration file for training SegNeXt model on a small test dataset
+
+gpus_to_use: '0' # Use first GPU, change as needed
+DPI: 300
+LOG_WANDB: False
+
+project_name: 'SegNeXt'
+experiment_name: 'small_test_segmentation'
+
+log_directory: "./logs/"
+checkpoint_path: "./checkpoints/"
+
+# Data loader parameters
+data_dir: "./small_dataset/"  # Point to the small dataset
+# First is images, second is masks - FIXED to match actual directory structure
+sub_directories: ['leftImg8bit/', 'gtFine/']
+Normalize_data: True
+Shuffle_data: True
+Augment_data: False  # Set to False for quick testing
+pin_memory: True
+num_workers: 2  # Reduced workers for small dataset
+num_classes: 20  # Cityscape classes
+img_height: 512  # Reduced image size for faster processing
+img_width: 1024   # Reduced image size for faster processing
+output_stride: 4
+input_channels: 3
+label_smoothing: 0.0
+batch_size: 2  # Can increase for smaller images
+WEIGHT_DECAY: 0.00005
+stochastic_drop_path: 2e-1
+layer_scaling_val: 1e-1
+
+# learning rate
+learning_rate: 0.001
+lr_schedule: 'cos'
+epochs: 5  # Reduced epochs for testing
+warmup_epochs: 1  # Reduced warmup for testing
+norm_typ: 'batch_norm'  # Use 'sync_bn' for multi-GPU
+BN_MOM: 0.9
+SyncBN_MOM: 3e-4
+
+# Hamburger Parameters
+ham_channels: 512
+put_cheese: True
+
+DUAL: False
+SPATIAL: TRUE
+RAND_INIT: True
+
+MD_S: 1
+MD_D: 512
+MD_R: 64
+
+TRAIN_STEPS: 6
+EVAL_STEPS: 6
+
+INV_T: 1
+BETA: 0.1
+Eta: 0.9
