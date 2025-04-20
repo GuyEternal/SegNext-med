@@ -1,4 +1,4 @@
-# Cell 9: Resume training from a checkpoint with CrossNeXt decoder
+# Cell 9: Resume training from a checkpoint with CrossNext decoder
 
 import time
 import yaml
@@ -22,25 +22,25 @@ else:
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
-    # Initialize model with same architecture
+    # Initialize model with same architecture from config
     resume_model = SegNext(
         num_classes=config['num_classes'],
         in_channnels=config['input_channels'],
-        embed_dims=[32, 64, 160, 256],
+        embed_dims=config['embed_dims'],         # [32, 64, 160, 256] for Tiny variant
         ffn_ratios=[4, 4, 4, 4],
-        depths=[3, 2, 2, 2],  # CRITICAL: Use [3, 2, 2, 2] to match training in cell6.md
+        depths=config['depths'],                 # [3, 3, 5, 2] for Tiny variant
         num_stages=4,
-        dec_outChannels=128,
+        dec_outChannels=config['decoder_channels'],  # 64 for Tiny variant
         drop_path=float(config['stochastic_drop_path']),
-        config=config  # Pass config to use CrossNeXt decoder parameters
+        config=config  # Pass config to use CrossNext decoder parameters
     )
     
     # Print model architecture for verification
     print(f"Resuming with model architecture:")
-    print(f"  embed_dims: [32, 64, 160, 256]")
-    print(f"  depths: [3, 2, 2, 2]")
-    print(f"  dec_outChannels: 128")
-    print(f"  CrossNeXt decoder with {config.get('crossnext_num_heads', 8)} attention heads")
+    print(f"  embed_dims: {config['embed_dims']}")
+    print(f"  depths: {config['depths']}")
+    print(f"  dec_outChannels: {config['decoder_channels']}")
+    print(f"  CrossNext decoder with {config['crossnext_num_heads']} attention heads")
     
     # Handle DataParallel wrapper if needed
     if isinstance(checkpoint['model_state_dict'], dict) and list(checkpoint['model_state_dict'].keys())[0].startswith('module.'):

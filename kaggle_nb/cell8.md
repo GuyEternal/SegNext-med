@@ -1,4 +1,4 @@
-# Cell 8: Load best model with CrossNeXt decoder and run inference on test set
+# Cell 8: Load best model with CrossNext decoder and run inference on test set
 
 import torch
 import numpy as np
@@ -33,20 +33,19 @@ checkpoint_path = f"{config['checkpoint_path']}{config['experiment_name']}.pth"
 print(f"Looking for checkpoint at: {checkpoint_path}")
 
 if os.path.exists(checkpoint_path):
-    # IMPORTANT: Use the exact same architecture parameters as in cell6.md
-    # This ensures compatibility with the saved checkpoint
-    embed_dims = [32, 64, 160, 256]
-    depths = [3, 2, 2, 2]  # Use [3, 2, 2, 2] from cell6.md, not the default [3, 3, 5, 2]
-    dec_channels = 128  # Use 128 from cell6.md, not the default 256
+    # Use the same architecture parameters from config
+    embed_dims = config['embed_dims']      # [32, 64, 160, 256] for Tiny variant
+    depths = config['depths']              # [3, 3, 5, 2] for Tiny variant
+    dec_channels = config['decoder_channels']  # 64 for Tiny variant
     
     # Log the model architecture parameters being used
-    print(f"Using model architecture parameters from training:")
+    print(f"Using model architecture parameters from config:")
     print(f"  embed_dims: {embed_dims}")
     print(f"  depths: {depths}")
     print(f"  dec_outChannels: {dec_channels}")
-    print(f"  CrossNeXt decoder with {config.get('crossnext_num_heads', 8)} attention heads")
+    print(f"  CrossNext decoder with {config['crossnext_num_heads']} attention heads")
     
-    # Initialize a new model instance with params from training
+    # Initialize a new model instance with params from config
     best_model = SegNext(
         num_classes=config['num_classes'],
         in_channnels=config['input_channels'],
@@ -56,7 +55,7 @@ if os.path.exists(checkpoint_path):
         num_stages=4,
         dec_outChannels=dec_channels,
         drop_path=float(config['stochastic_drop_path']),
-        config=config  # Pass config to use CrossNeXt decoder parameters
+        config=config  # Pass config to use CrossNext decoder parameters
     )
     
     # Load checkpoint

@@ -1,15 +1,14 @@
-# Cell 6: Initialize the SegNext model for ISIC dataset with CrossNeXt decoder
+# Cell 6: Initialize the SegNext model for ISIC dataset with CrossNext decoder
 
-# Initialize SegNext model with appropriate parameters for ISIC dataset
-# The model will use CrossNeXt decoder due to our changes in model.py
+# Initialize SegNext model with parameters from config
 model = SegNext(
     num_classes=config['num_classes'],       # 2 for binary segmentation (background and lesion)
     in_channnels=config['input_channels'],   # 3 for RGB images
-    embed_dims=[32, 64, 160, 256],           # Reduced dimensions for Kaggle
+    embed_dims=config['embed_dims'],         # [32, 64, 160, 256] for Tiny variant
     ffn_ratios=[4, 4, 4, 4],                 # Feed-forward network ratios
-    depths=[3, 2, 2, 2],                     # Reduced depth for faster training
+    depths=config['depths'],                 # [3, 3, 5, 2] for Tiny variant
     num_stages=4,                            # Standard 4-stage architecture
-    dec_outChannels=128,                     # Reduced decoder channels for Kaggle
+    dec_outChannels=config['decoder_channels'], # 64 for Tiny variant
     drop_path=float(config['stochastic_drop_path']),
     config=config
 )
@@ -21,7 +20,10 @@ model = model.to(device)
 print(f"Model initialized with {sum(p.numel() for p in model.parameters())} parameters")
 print(f"Input channels: {config['input_channels']}")
 print(f"Output classes: {config['num_classes']}")
-print(f"Using CrossNeXt decoder with {config.get('crossnext_num_heads', 8)} attention heads")
+print(f"Using CrossNext decoder with {config['crossnext_num_heads']} attention heads")
+print(f"Encoder dimensions: {config['embed_dims']}")
+print(f"Encoder depths: {config['depths']}")
+print(f"Decoder channels: {config['decoder_channels']}")
 
 # Initialize loss function
 loss = FocalLoss()
@@ -53,4 +55,4 @@ trainer = Trainer(model, config['batch_size'], optimizer, criterion, metric)
 evaluator = Evaluator(model, metric)
 
 print("Model, optimizer, and training utilities initialized successfully.")
-print("CrossNeXt decoder is being used for enhanced segmentation performance.") 
+print("CrossNext decoder is being used for enhanced segmentation performance.") 
