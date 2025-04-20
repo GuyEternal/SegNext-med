@@ -1,158 +1,106 @@
-# Update data_utils.py to handle binary segmentation for ISIC dataset
-%%writefile data_utils.py
-import yaml
-with open('config.yaml') as fh:
-    config = yaml.load(fh, Loader=yaml.FullLoader)
-import torch
-from torch.autograd import Variable
-from torchvision import transforms
-from PIL import Image, ImageOps
-import numpy as np
+# Cell 5: Create data loaders for training and validation
 
-torch.backends.cudnn.deterministic = True
+# Create training dataset
+train_data = ISICDataset(
+    train_paths[0], 
+    train_paths[1], 
+    config['img_height'], 
+    config['img_width'],
+    config['Augment_data'], 
+    config['Normalize_data']
+)
 
-transformer = transforms.Compose([
-                                 # this transfrom converts BHWC -> BCHW and 
-                                 # also divides the image by 255 by default if values are in range 0..255.
-                                 transforms.ToTensor(),
-                                ])
-stride = config['output_stride']
-torch_resizer = transforms.Compose([transforms.Resize(size=(config['img_height']//stride, config['img_width']//stride),
-                                                interpolation=transforms.InterpolationMode.NEAREST)])
-torch_imgresizer = transforms.Compose([transforms.Resize(size=(config['img_height']//stride, config['img_width']//stride),
-                                                interpolation=transforms.InterpolationMode.BILINEAR)])
-def collate(batch):
-    '''
-    custom Collat funciton for collating individual fetched data samples into batches.
-    '''
-    
-    img = [ b['img'] for b in batch ] # w, h
-    lbl = [ b['lbl'] for b in batch ]
-   
-    return {'img': img, 'lbl': lbl}
-
-normalize = lambda x, alpha, beta : (((beta-alpha) * (x-np.min(x))) / (np.max(x)-np.min(x))) + alpha
-standardize = lambda x : (x - np.mean(x)) / np.std(x)
-
-def std_norm(img, norm=True, alpha=0, beta=1):
-    '''
-    Standardize and Normalizae data sample wise
-    alpha -> -1 or 0 lower bound
-    beta -> 1 upper bound
-    '''
-    img = standardize(img)
-    if norm:
-        img = normalize(img, alpha, beta)
-        
-    return img
-
-def _mask_transform(mask):
-    target = np.array(mask).astype('int32')
-    return target
-
-def masks_transform(masks, numpy=False):
-    '''
-    masks: list of PIL images
-    '''
-    targets = []
-    for m in masks:
-        targets.append(_mask_transform(m))
-    targets = np.array(targets) 
-    if numpy:
-        return targets
-    else:
-        return torch.from_numpy(targets).long().to('cuda' if torch.cuda.is_available() else 'cpu')
-
-def images_transform(images):
-    '''
-    images: list of PIL images
-    '''
-    inputs = []
-    for img in images:
-        inputs.append(transformer(img))
-    inputs = torch.stack(inputs, dim=0).float().to('cuda' if torch.cuda.is_available() else 'cpu')
-    return inputs
-
-def encode_labels(mask):
-    if config['num_classes'] == 20:  # Cityscapes
-        label_mask = np.zeros_like(mask)
-        for k in mapping_20:
-            label_mask[mask == k] = mapping_20[k]
-        return label_mask
-    elif config['num_classes'] == 2:  # ISIC binary segmentation
-        # ISIC masks are already binary (0 for background, 255 for lesion)
-        # Convert to 0 and 1 for background and lesion
-        return (mask > 127).astype(np.uint8)
-    else:
-        raise ValueError(f"Unsupported number of classes: {config['num_classes']}")
-
-mapping_20 = {
-    0: 0,
-    1: 0,
-    2: 0,
-    3: 0,
-    4: 0,
-    5: 0,
-    6: 0,
-    7: 1,
-    8: 2,
-    9: 0,
-    10: 0,
-    11: 3,
-    12: 4,
-    13: 5,
-    14: 0,
-    15: 0,
-    16: 0,
-    17: 6,
-    18: 0,
-    19: 7,
-    20: 8,
-    21: 9,
-    22: 10,
-    23: 11,
-    24: 12,
-    25: 13,
-    26: 14,
-    27: 15,
-    28: 16,
-    29: 0,
-    30: 0,
-    31: 17,
-    32: 18,
-    33: 19,
-    -1: 0
+# Configure DataLoader parameters
+dataloader_kwargs = {
+    'batch_size': config['batch_size'],
+    'shuffle': config['Shuffle_data'],
+    'num_workers': config['num_workers'],
+    'collate_fn': collate,
+    'pin_memory': config['pin_memory']
 }
 
-# Original Cityscapes class names and palette (kept for backward compatibility)
-cityscape_class_names = ['background', 'road', 'sidewalk', 'building', 'wall', 'fence', 'pole',
-                        'traffic light', 'traffic sign',
-                        'vegetation', 'terrain', 'sky', 'person', 'rider', 'car',
-                        'truck', 'bus', 'train', 'motorcycle', 'bicycle']
+# Add prefetch_factor and persistent_workers if using workers
+if config['num_workers'] > 0:
+    dataloader_kwargs.update({
+        'prefetch_factor': 2,
+        'persistent_workers': True
+    })
 
-pallet_cityscape = np.array([[[0,0,0],
-                            [128, 64, 128],
-                            [244, 35, 232],
-                            [70, 70, 70],
-                            [102, 102, 156],
-                            [190, 153, 153],
-                            [153, 153, 153],
-                            [250, 170, 30],
-                            [220, 220, 0],
-                            [107, 142, 35],
-                            [152, 251, 152],
-                            [70, 130, 180],
-                            [220, 20, 60],
-                            [255, 0, 0],
-                            [0, 0, 142],
-                            [0, 0, 70],
-                            [0, 60, 100],
-                            [0, 80, 100],
-                            [0, 0, 230],
-                            [119, 11, 32]]], np.uint8) / 255
+# Create training data loader
+train_loader = DataLoader(train_data, **dataloader_kwargs)
 
-# ISIC class names and palette (binary segmentation)
-isic_class_names = ['background', 'lesion']
+# Create validation dataset
+val_data = ISICDataset(
+    val_paths[0], 
+    val_paths[1], 
+    config['img_height'], 
+    config['img_width'],
+    False,  # No augmentation for validation
+    config['Normalize_data']
+)
 
-pallet_isic = np.array([[[0, 0, 0],  # Black for background
-                        [255, 0, 0]]], np.uint8) / 255  # Red for lesion 
+# Set shuffle to False for validation
+val_dataloader_kwargs = dataloader_kwargs.copy()
+val_dataloader_kwargs['shuffle'] = False
+
+# Create validation data loader
+val_loader = DataLoader(val_data, **val_dataloader_kwargs)
+
+# Print dataset information
+print(f"Training samples: {len(train_data)}")
+print(f"Validation samples: {len(val_data)}")
+print(f"Batch size: {config['batch_size']}")
+print(f"Steps per epoch: {len(train_loader)}")
+
+# Visualize a batch of samples with improved visualization
+try:
+    batch = next(iter(train_loader))
+    s = 255
+    
+    # Get number of samples to display (up to batch size)
+    batch_size = min(config['batch_size'], len(batch['img']))
+    
+    # Create a figure with rows for each sample
+    plt.figure(figsize=(15, 5 * batch_size))
+    
+    for i in range(batch_size):
+        # Get image and mask for this sample
+        img = (batch['img'][i] * s).astype(np.uint8)
+        mask = batch['lbl'][i]
+        
+        # Create colored mask for better visibility
+        colored_mask = np.zeros((mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
+        colored_mask[mask == 1] = [255, 0, 0]  # Red for lesion area
+        
+        # Plot original image
+        plt.subplot(batch_size, 3, i*3 + 1)
+        plt.imshow(img)
+        plt.title(f'Sample {i+1}: Image')
+        plt.axis('off')
+        
+        # Plot grayscale mask
+        plt.subplot(batch_size, 3, i*3 + 2)
+        plt.imshow(mask, cmap='gray')
+        plt.title(f'Sample {i+1}: Mask (Grayscale)')
+        plt.axis('off')
+        
+        # Plot colored mask
+        plt.subplot(batch_size, 3, i*3 + 3)
+        plt.imshow(colored_mask)
+        plt.title(f'Sample {i+1}: Mask (Colored)')
+        plt.axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('sample_batch.png')
+    plt.show()
+    
+    # Print mask statistics for verification
+    for i in range(batch_size):
+        mask = batch['lbl'][i]
+        non_zero = np.count_nonzero(mask)
+        percentage = (non_zero / mask.size) * 100
+        print(f"Sample {i+1} mask stats: {non_zero} non-zero pixels ({percentage:.2f}% of image)")
+    
+    print("Sample batch visualization saved as 'sample_batch.png'")
+except Exception as e:
+    print(f"Error visualizing batch: {e}") 

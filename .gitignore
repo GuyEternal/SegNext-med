@@ -6,3 +6,4 @@ processed_isic_dataset/
 checkpoints/
 .gitconfig
 repomix-output.xml
+*.zip

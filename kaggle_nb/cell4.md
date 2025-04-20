@@ -1,140 +1,76 @@
-# Update utils.py to properly handle the ISIC dataset
-%%writefile utils.py
-import math
+# Cell 4: Import necessary modules and prepare for training
+
+import os
 import yaml
-
-with open('config.yaml') as fh:
-    config = yaml.load(fh, Loader=yaml.FullLoader)
-
-import cv2, os
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.utils.data import DataLoader
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from tqdm import tqdm
+mpl.rcParams['figure.dpi'] = 300
 
-from data_utils import (images_transform, masks_transform, torch_imgresizer,
-                        torch_resizer)
+# Set the working directory
+%cd /kaggle/working/SegNext-med
 
-class ModelUtils(object):
-    def __init__(self, num_classes, chkpt_pth, exp_name):
-        self.num_classes = num_classes
-        self.chkpt_pth = chkpt_pth
-        self.exp_name = exp_name
+# Load the Kaggle configuration
+with open('config_kaggle.yaml') as fh:
+    config = yaml.load(fh, Loader=yaml.FullLoader)
+
+# Set CUDA environment variables for multi-GPU setup
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = '0, 1'  # This should be '0,1' for dual GPUs
+print(config['gpus_to_use'])
+
+# Check for GPU availability and display GPU information
+print(f"CUDA available: {torch.cuda.is_available()}")
+[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+device_count = torch.cuda.device_count()
+print(f"Number of available GPUs: {device_count}")
+for i in range(device_count):
+    print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    print(f"Memory: {torch.cuda.get_device_properties(i).total_memory / 1e9:.2f} GB")
+
+# Set the device
+if device_count > 1:
+    print("Using multiple GPUs for training")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    def save_chkpt(self, model, optimizer, epoch=0, loss=0, iou=0):
-        print('-> Saving checkpoint')
-        torch.save({
-                    'epoch': epoch,
-                    'loss': loss,
-                    'iou': iou,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict()
-                    }, os.path.join(self.chkpt_pth, f'{self.exp_name}.pth'))
+    # Check if we're using synchronized batch norm for multi-GPU training
+    if config.get('norm_typ') == 'sync_bn':
+        print("Using synchronized batch normalization for multi-GPU training")
+else:
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"Using single device: {device}")
 
-    def load_chkpt(self, model, optimizer=None):
-        
-        try:
-            print('-> Loading checkpoint')
-            chkpt = torch.load(os.path.join(self.chkpt_pth, f'{self.exp_name}.pth'))
-            epoch = chkpt['epoch']
-            loss = chkpt['loss']
-            iou = chkpt['iou']
-            model.load_state_dict(chkpt['model_state_dict'])
-            if optimizer is not None:
-                optimizer.load_state_dict(chkpt['optimizer_state_dict'])
-            print(f'[INFO] Loaded Model checkpoint: epoch={epoch} loss={loss} iou={iou}')
-        except FileNotFoundError:
-            print('[INFO] No checkpoint found')
+# Import required modules from the repository
+from dataloader import GEN_DATA_LISTS, ISICDataset
+from data_utils import collate, pallet_isic
+from model import SegNext
+from losses import FocalLoss
+from metrics import ConfusionMatrix
+from lr_scheduler import LR_Scheduler
+from utils import Trainer, Evaluator, ModelUtils
+from gray2color import gray2color
 
-class Trainer(object):
-    def __init__(self, model, batch, optimizer, criterion, metric):
-        self.model = model
-        self.batch = batch
-        self.optimizer = optimizer
-        self.criterion = criterion
-        self.metric = metric
-    
-    def get_scores(self):
-        return self.metric.get_scores()
+# Setup visualization functions
+g2c = lambda x : gray2color(x, use_pallet='custom', custom_pallet=pallet_isic)
 
-    def reset_metric(self):
-        self.metric.reset()
-    
-    def training_step(self, batched_data):
-        # Handle differently based on dataset type (binary or multi-class)
-        if config['num_classes'] == 2:  # ISIC binary segmentation
-            # Stack images and convert to tensor
-            img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
-                                    for img in batched_data['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            # Stack labels and convert to tensor, keeping original size
-            lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
-                                    for lbl in batched_data['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-        else:  # Cityscapes multi-class segmentation (original approach)
-            img_batch = images_transform(batched_data['img'])
-            lbl_batch = torch_resizer(masks_transform(batched_data['lbl']))
-        
-        self.optimizer.zero_grad()
+# Generate data lists from the dataset
+data_lists = GEN_DATA_LISTS(config['data_dir'], config['sub_directories'])
+train_paths, val_paths, test_paths = data_lists.get_splits()
+classes = data_lists.get_classes()
+data_lists.get_filecounts()
 
-        preds = self.model.forward(img_batch)
-        loss = self.criterion(preds, lbl_batch)
-
-        loss.backward()
-        self.optimizer.step()
-
-        preds = preds.argmax(1)
-        preds = preds.cpu().numpy()
-        lbl_batch = lbl_batch.cpu().numpy()
-
-        self.metric.update(lbl_batch, preds)
-
-        return loss.item()
-
-class Evaluator(object):
-    def __init__(self, model, metric):
-        self.model = model
-        self.metric = metric
-    
-    def get_scores(self):
-        return self.metric.get_scores()
-
-    def reset_metric(self):
-        self.metric.reset()
-    
-    def eval_step(self, data_batch):
-        # Handle differently based on dataset type (binary or multi-class)
-        if config['num_classes'] == 2:  # ISIC binary segmentation
-            # Stack images and convert to tensor
-            self.img_batch = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() 
-                                    for img in data_batch['img']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            # Stack labels and convert to tensor, keeping original size
-            lbl_batch = torch.stack([torch.from_numpy(lbl).long() 
-                                    for lbl in data_batch['lbl']], dim=0).to('cuda' if torch.cuda.is_available() else 'cpu')
-        else:  # Cityscapes multi-class segmentation (original approach)
-            self.img_batch = images_transform(data_batch['img'])
-            lbl_batch = torch_resizer(masks_transform(data_batch['lbl']))
-        
-        with torch.no_grad():
-            preds = self.model.forward(self.img_batch) # already softmaxed
-
-        preds = preds.argmax(1)
-        self.preds = preds.cpu().numpy()
-        self.lbl_batch = lbl_batch.cpu().numpy()
-        self.metric.update(self.lbl_batch, self.preds)
-        
-    def get_sample_prediction(self):
-        # Check if we're working with ISIC binary segmentation
-        if config['num_classes'] == 2:
-            # Get the first image directly from NCHW format
-            img = self.img_batch[0].cpu().permute(1, 2, 0).numpy()
-            lbl = self.lbl_batch[0]
-            pred = self.preds[0]
-            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8)
-        else:
-            # Original approach for Cityscapes
-            self.img_batch = torch_imgresizer(self.img_batch).detach().cpu().numpy()
-            img = np.transpose(self.img_batch[0,...], (1,2,0))
-            lbl = self.lbl_batch[0,...]
-            pred = self.preds[0,...]
-            return (img*255).astype(np.uint8), lbl.astype(np.uint8), pred.astype(np.uint8) 
+# Print summary of multi-GPU setup
+print("\nTraining configuration summary:")
+print(f"GPUs being used: {config['gpus_to_use']}")
+print(f"Batch size (total): {config['batch_size']}")
+if device_count > 1:
+    print(f"Effective batch size per GPU: {config['batch_size'] // device_count}")
+print(f"Model architecture: embed_dims={config.get('embed_dims')}")
+print(f"Model architecture: depths={config.get('depths')}")
+print(f"Normalization type: {config.get('norm_typ', 'batch_norm')}")
+print(f"Number of workers: {config['num_workers']}")
+print(f"Training epochs: {config['epochs']}") 

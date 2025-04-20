@@ -1,5 +1,5 @@
-```python
-# Clone the SegNext repository
-!git clone https://github.com/deepjawale/SegNext.git
-%cd SegNext
-``` 
+
+!git clone https://github.com/GuyEternal/SegNext-med.git
+%cd SegNext-med
+
+!pip install numpy torch torchvision opencv-python pyyaml matplotlib tqdm tabulate imgviz fmutils 
