@@ -1,6 +1,7 @@
-# Cell 6: Initialize the SegNext model for ISIC dataset
+# Cell 6: Initialize the SegNext model for ISIC dataset with CrossNeXt decoder
 
 # Initialize SegNext model with appropriate parameters for ISIC dataset
+# The model will use CrossNeXt decoder due to our changes in model.py
 model = SegNext(
     num_classes=config['num_classes'],       # 2 for binary segmentation (background and lesion)
     in_channnels=config['input_channels'],   # 3 for RGB images
@@ -20,6 +21,7 @@ model = model.to(device)
 print(f"Model initialized with {sum(p.numel() for p in model.parameters())} parameters")
 print(f"Input channels: {config['input_channels']}")
 print(f"Output classes: {config['num_classes']}")
+print(f"Using CrossNeXt decoder with {config.get('crossnext_num_heads', 8)} attention heads")
 
 # Initialize loss function
 loss = FocalLoss()
@@ -50,4 +52,5 @@ mu = ModelUtils(config['num_classes'], config['checkpoint_path'], config['experi
 trainer = Trainer(model, config['batch_size'], optimizer, criterion, metric)
 evaluator = Evaluator(model, metric)
 
-print("Model, optimizer, and training utilities initialized successfully.") 
+print("Model, optimizer, and training utilities initialized successfully.")
+print("CrossNeXt decoder is being used for enhanced segmentation performance.") 

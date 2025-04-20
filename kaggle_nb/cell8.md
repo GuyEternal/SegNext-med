@@ -1,4 +1,4 @@
-# Cell 8: Load best model and run inference on test set
+# Cell 8: Load best model with CrossNeXt decoder and run inference on test set
 
 import torch
 import numpy as np
@@ -44,6 +44,7 @@ if os.path.exists(checkpoint_path):
     print(f"  embed_dims: {embed_dims}")
     print(f"  depths: {depths}")
     print(f"  dec_outChannels: {dec_channels}")
+    print(f"  CrossNeXt decoder with {config.get('crossnext_num_heads', 8)} attention heads")
     
     # Initialize a new model instance with params from training
     best_model = SegNext(
@@ -55,7 +56,7 @@ if os.path.exists(checkpoint_path):
         num_stages=4,
         dec_outChannels=dec_channels,
         drop_path=float(config['stochastic_drop_path']),
-        config=config
+        config=config  # Pass config to use CrossNeXt decoder parameters
     )
     
     # Load checkpoint

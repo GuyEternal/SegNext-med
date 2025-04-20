@@ -48,6 +48,7 @@ else:
 from dataloader import GEN_DATA_LISTS, ISICDataset
 from data_utils import collate, pallet_isic
 from model import SegNext
+from crossnext_decoder import CrossNeXtDecoder  # Direct import of CrossNeXtDecoder
 from losses import FocalLoss
 from metrics import ConfusionMatrix
 from lr_scheduler import LR_Scheduler
@@ -73,4 +74,11 @@ print(f"Model architecture: embed_dims={config.get('embed_dims')}")
 print(f"Model architecture: depths={config.get('depths')}")
 print(f"Normalization type: {config.get('norm_typ', 'batch_norm')}")
 print(f"Number of workers: {config['num_workers']}")
-print(f"Training epochs: {config['epochs']}") 
+print(f"Training epochs: {config['epochs']}")
+
+# Print CrossNeXt decoder configuration
+print("\nCrossNeXt decoder configuration:")
+print(f"Number of attention heads: {config.get('crossnext_num_heads', 8)}")
+print(f"Kernel sizes: {config.get('crossnext_kernel_sizes', [7, 11, 21])}")
+print(f"Normalization type: {config.get('crossnext_norm_type', 'WithBias')}")
+print(f"Intermediate channels: {config.get('ham_channels', 512)} (shared with HamDecoder)") 

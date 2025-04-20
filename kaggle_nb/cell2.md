@@ -21,6 +21,11 @@ config['num_workers'] = 2  # Adjust workers for Kaggle
 config['epochs'] = 40  # Reduce epochs for demo
 config['gpus_to_use'] = '0, 1'
 
+# Add CrossNeXt decoder parameters
+config['crossnext_num_heads'] = 8          # Number of attention heads for cross-axis attention
+config['crossnext_kernel_sizes'] = [7, 11, 21]  # Kernel sizes for multi-scale strip convolutions
+config['crossnext_norm_type'] = 'WithBias'      # Type of normalization in attention
+
 # Save the updated config
 with open('config_kaggle.yaml', 'w') as file:
     yaml.dump(config, file)
@@ -28,4 +33,8 @@ with open('config_kaggle.yaml', 'w') as file:
 print("Configuration updated for Kaggle environment.")
 print(f"Using dataset from: {config['data_dir']}")
 print(f"Logs will be saved to: {config['log_directory']}")
-print(f"Checkpoints will be saved to: {config['checkpoint_path']}") 
+print(f"Checkpoints will be saved to: {config['checkpoint_path']}")
+print("CrossNeXt decoder configured with:")
+print(f"- Number of attention heads: {config['crossnext_num_heads']}")
+print(f"- Kernel sizes: {config['crossnext_kernel_sizes']}")
+print(f"- Normalization type: {config['crossnext_norm_type']}") 

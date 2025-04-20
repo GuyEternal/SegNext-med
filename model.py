@@ -7,7 +7,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 from backbone import MSCANet
-from decoder import HamDecoder
+# from decoder import HamDecoder
+from crossnext_decoder import CrossNeXtDecoder
 
 
 class SegNext(nn.Module):
@@ -20,7 +21,7 @@ class SegNext(nn.Module):
         self.encoder = MSCANet(in_channnels=in_channnels, embed_dims=embed_dims,
                            ffn_ratios=ffn_ratios, depths=depths, num_stages=num_stages,
                            drop_path=drop_path)
-        self.decoder = HamDecoder(
+        self.decoder = CrossNeXtDecoder(
             outChannels=dec_outChannels, config=config, enc_embed_dims=embed_dims)
         self.init_weights()
 

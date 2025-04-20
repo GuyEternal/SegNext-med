@@ -43,6 +43,11 @@ SyncBN_MOM: 3e-4
 ham_channels: 512
 put_cheese: True
 
+# CrossNeXt Decoder Parameters
+crossnext_num_heads: 8          # Number of attention heads for cross-axis attention
+crossnext_kernel_sizes: [7, 11, 21]  # Kernel sizes for multi-scale strip convolutions
+crossnext_norm_type: 'WithBias'      # Type of normalization in attention
+
 DUAL: False
 SPATIAL: TRUE
 RAND_INIT: True
