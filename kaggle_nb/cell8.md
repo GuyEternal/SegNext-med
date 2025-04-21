@@ -172,7 +172,8 @@ if os.path.exists(checkpoint_path):
             if 'iou_mean' in scores:
                 print(f"Test IoU: {scores['iou_mean']:.4f}")
             if 'iou' in scores:
-                print(f"Test IoU by class: {', '.join([f'{iou:.4f}' for iou in scores['iou']])}")
+                mean_iou = np.mean(scores['iou'])
+                print(f"Test mean IoU: {mean_iou:.4f}")
             # Safely check for pixel accuracy key (may be named differently)
             if 'pix_acc' in scores:
                 print(f"Test Pixel Accuracy: {scores['pix_acc']:.4f}")
