@@ -1,4 +1,4 @@
-# crossnext_decoder.py - Implementation of the Multi-Scale Orthogonal Attention Decoder for SegNeXt
+# cross_attention.py - Implementation of the Multi-Scale Cross-Directional Attention Decoder
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +10,7 @@ try:
 except ImportError:
     raise ImportError("Please install einops: pip install einops")
 
-from bricks import resize, ConvRelu  # Reuse functions from bricks.py
+from bricks import resize, ConvRelu, DepthwiseSeparableConv  # Reuse and import functions from bricks.py
 
 #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 # Layer Normalization components
@@ -77,12 +77,12 @@ class LayerNorm(nn.Module):
         return to_4d(x_normalized, h, w)
 
 #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-# CrossNeXt Attention Module
+# Cross Attention Module
 #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class OrthogonalAttention(nn.Module):
+class CrossAttention(nn.Module):
     """
-    OrthogonalAttention module - A multi-scale orthogonal attention mechanism.
+    CrossAttention module - A multi-scale cross-directional attention mechanism.
     
     This module:
     1. Uses multi-scale strip convolutions on both x-axis and y-axis
@@ -96,7 +96,7 @@ class OrthogonalAttention(nn.Module):
         kernel_sizes (list): List of kernel sizes for multi-scale convolutions
     """
     def __init__(self, dim, num_heads=8, LayerNorm_type='WithBias', kernel_sizes=[7, 11, 21]):
-        super(OrthogonalAttention, self).__init__()
+        super(CrossAttention, self).__init__()
         
         # Add check to ensure that input dimension is divisible by number of heads
         assert dim % num_heads == 0, f"Input dimension {dim} must be divisible by num_heads {num_heads}"
@@ -106,8 +106,11 @@ class OrthogonalAttention(nn.Module):
         self.dim = dim
         self.kernel_sizes = kernel_sizes
         
-        # Normalization layer
-        self.norm = LayerNorm(dim, LayerNorm_type)
+        # Add temperature parameter as in CrossNet implementation
+        self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
+        
+        # Normalization layer - renamed to norm1 to match CrossNet
+        self.norm1 = LayerNorm(dim, LayerNorm_type)
         
         # Multi-scale x-axis convolutions (horizontal strip convolutions)
         self.conv0_1 = nn.Conv2d(dim, dim, (1, kernel_sizes[0]), 
@@ -133,42 +136,37 @@ class OrthogonalAttention(nn.Module):
         residual = x
         
         # Apply normalization
-        x_norm = self.norm(x)
+        x1 = self.norm1(x)
         
-        # Multi-scale x-axis convolutions (horizontal)
-        attn_0_1 = self.conv0_1(x_norm)
-        attn_1_1 = self.conv1_1(x_norm)
-        attn_2_1 = self.conv2_1(x_norm)
+        # Multi-scale x-axis convolutions (horizontal) with CrossNet naming
+        attn_00 = self.conv0_1(x1)
+        attn_10 = self.conv1_1(x1)
+        attn_20 = self.conv2_1(x1)
         
         # Combine x-axis outputs
-        out1 = attn_0_1 + attn_1_1 + attn_2_1
+        out1 = attn_00 + attn_10 + attn_20
         
-        # Multi-scale y-axis convolutions (vertical)
-        attn_0_2 = self.conv0_2(x_norm)
-        attn_1_2 = self.conv1_2(x_norm)
-        attn_2_2 = self.conv2_2(x_norm)
+        # Multi-scale y-axis convolutions (vertical) with CrossNet naming
+        attn_01 = self.conv0_2(x1)
+        attn_11 = self.conv1_2(x1)
+        attn_21 = self.conv2_2(x1)
         
         # Combine y-axis outputs
-        out2 = attn_0_2 + attn_1_2 + attn_2_2
+        out2 = attn_01 + attn_11 + attn_21
         
         # Apply projections
         out1 = self.project_out(out1)
         out2 = self.project_out(out2)
         
         # Reshape for cross attention
-        # For x-axis branch query (using y-axis features)
-        # Reshape: [batch, channels, height, width] -> [batch, heads, height, width*channels_per_head]
-        q1 = rearrange(out2, 'b (head c) h w -> b head h (w c)', head=self.num_heads)
-        # For x-axis branch key and value (using x-axis features)
+        # For the CrossNet implementation, we match the query, key, value assignments
         k1 = rearrange(out1, 'b (head c) h w -> b head h (w c)', head=self.num_heads)
         v1 = rearrange(out1, 'b (head c) h w -> b head h (w c)', head=self.num_heads)
-        
-        # For y-axis branch query (using x-axis features)
-        # Reshape: [batch, channels, height, width] -> [batch, heads, width, height*channels_per_head]
-        q2 = rearrange(out1, 'b (head c) h w -> b head w (h c)', head=self.num_heads)
-        # For y-axis branch key and value (using y-axis features)
         k2 = rearrange(out2, 'b (head c) h w -> b head w (h c)', head=self.num_heads)
         v2 = rearrange(out2, 'b (head c) h w -> b head w (h c)', head=self.num_heads)
+        
+        q2 = rearrange(out1, 'b (head c) h w -> b head w (h c)', head=self.num_heads)
+        q1 = rearrange(out2, 'b (head c) h w -> b head h (w c)', head=self.num_heads)
         
         # Normalize queries and keys for more stable attention
         q1 = torch.nn.functional.normalize(q1, dim=-1)
@@ -196,26 +194,24 @@ class OrthogonalAttention(nn.Module):
         # [batch, heads, width, height*channels_per_head] -> [batch, channels, height, width]
         out4 = rearrange(out4, 'b head w (h c) -> b (head c) h w', head=self.num_heads, h=h, w=w)
         
-        # Final projection and residual connection
-        out3 = self.project_out(out3)
-        out4 = self.project_out(out4)
-        out = out3 + out4 + residual
+        # Final projection and residual connection - simplified in CrossNet
+        out = self.project_out(out3) + self.project_out(out4) + residual
         
         return out
 
 #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-# CrossNeXt Decoder
+# Cross Decoder
 #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class CrossNeXtDecoder(nn.Module):
+class CrossDecoder(nn.Module):
     """
-    CrossNeXt Decoder - An advanced orthogonal multi-scale attention decoder.
+    CrossDecoder - An advanced cross-directional multi-scale attention decoder.
     
     This decoder:
     1. Takes features from multiple encoder stages
     2. Concatenates them after resizing to the same resolution
     3. Reduces channels with a 1x1 convolution
-    4. Applies the OrthogonalAttention mechanism
+    4. Applies the CrossAttention mechanism
     5. Projects to output channels
     
     Args:
@@ -223,52 +219,87 @@ class CrossNeXtDecoder(nn.Module):
         config (dict): Configuration dictionary
         enc_embed_dims (list): Dimensions of encoder features at each stage
     """
-    def __init__(self, outChannels, config, enc_embed_dims=[32, 64, 460, 256]):
+    def __init__(self, outChannels, config, enc_embed_dims=[64, 128, 320, 512]):
         super().__init__()
         
-        # Get parameters from config
+        # Fixed-size parameter for consistent resizing
+        self.image_size = config.get('decoder_image_size', 128)
+        self.align_corners = config.get('align_corners', False)
+        
+        # Get parameters from config using the updated parameter names
         intermediate_channels = config.get('ham_channels', enc_embed_dims[1])
         
         # Add warning if ham_channels is not found in config
         if 'ham_channels' not in config:
             print(f"Warning: 'ham_channels' not found in config. Using encoder dimension {enc_embed_dims[1]} as fallback.")
             
-        num_heads = config.get('crossnext_num_heads', 8)
-        kernel_sizes = config.get('crossnext_kernel_sizes', [7, 11, 21])
-        norm_type = config.get('crossnext_norm_type', 'WithBias')
+        num_heads = config.get('cross_num_heads', 8)
+        kernel_sizes = config.get('cross_kernel_sizes', [7, 11, 21])
+        norm_type = config.get('cross_norm_type', 'WithBias')
         
-        # Channel reduction (equivalent to "squeeze" in the original HamDecoder)
-        self.squeeze = ConvRelu(sum(enc_embed_dims[1:]), intermediate_channels)
+        # Channel reduction for stages 1-3
+        self.squeeze = ConvRelu(sum((enc_embed_dims[1], enc_embed_dims[2], enc_embed_dims[3])), 
+                               intermediate_channels)
         
-        # OrthogonalAttention module
-        self.cross_attn = OrthogonalAttention(
+        # CrossAttention module
+        self.decoder_level = CrossAttention(
             dim=intermediate_channels, 
             num_heads=num_heads, 
             LayerNorm_type=norm_type,
             kernel_sizes=kernel_sizes
         )
         
-        # Final output projection (equivalent to "align" in the original HamDecoder)
-        self.align = ConvRelu(intermediate_channels, outChannels)
+        # Add separable bottleneck for processing combined features
+        # This is a key difference in the CrossNet implementation
+        self.sep_bottleneck = nn.Sequential(
+            DepthwiseSeparableConv(
+                intermediate_channels + enc_embed_dims[0],
+                enc_embed_dims[3],
+                kernel_size=3, 
+                padding=1
+            ),
+            DepthwiseSeparableConv(
+                enc_embed_dims[3],
+                enc_embed_dims[3],
+                kernel_size=3, 
+                padding=1
+            )
+        )
+        
+        # Final output projection 
+        self.align = ConvRelu(enc_embed_dims[3], outChannels)
+        
+        # Add classification head
+        self.cls_seg = nn.Conv2d(outChannels, config.get('num_classes', 2), kernel_size=1)
     
     def forward(self, features):
-        # Drop stage 1 features (same as in the original HamDecoder)
-        features = features[1:]
+        # Resize all features to fixed size instead of just dropping stage 1
+        features = [resize(
+            level, 
+            size=(self.image_size, self.image_size), 
+            mode='bilinear',
+            align_corners=self.align_corners
+        ) for level in features]
         
-        # Resize all features to the same resolution (using the resolution of stage 3 features)
-        # This matches the behavior in the original HamDecoder
-        features = [resize(feature, size=features[-3].shape[2:], mode='bilinear') for feature in features]
-        
-        # Concatenate features
-        x = torch.cat(features, dim=1)
+        # Concatenate features from stages 1-3
+        y1 = torch.cat([features[1], features[2], features[3]], dim=1)
         
         # Channel reduction
-        x = self.squeeze(x)
+        x = self.squeeze(y1)
         
-        # Apply OrthogonalAttention
-        x = self.cross_attn(x)
+        # Apply CrossAttention
+        x = self.decoder_level(x)
+        
+        # Concatenate with stage 0 features
+        x = torch.cat([x, features[0]], dim=1)
+        
+        # Process through separable bottleneck
+        x = self.sep_bottleneck(x)
         
         # Final projection
         x = self.align(x)
+        
+        # Apply classification head
+        x = self.cls_seg(x)
         
         return x 

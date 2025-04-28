@@ -200,6 +200,23 @@ class SeprableConv2d(nn.Module):
         
         return x
 
+# Add proper DepthwiseSeparableConv implementation
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, inChannels, outChannels, kernel_size=3, stride=1, padding=1, bias=False):
+        super().__init__()
+        self.dwconv = nn.Conv2d(inChannels, inChannels, kernel_size=kernel_size, 
+                               stride=stride, padding=padding, groups=inChannels, bias=bias)
+        self.norm = NormLayer(inChannels, norm_type=config['norm_typ'])
+        self.act = nn.ReLU(inplace=True)
+        self.pwconv = nn.Conv2d(inChannels, outChannels, kernel_size=1, bias=bias)
+        
+    def forward(self, x):
+        x = self.dwconv(x)
+        x = self.norm(x)
+        x = self.act(x)
+        x = self.pwconv(x)
+        return x
+
 class ConvRelu(nn.Module):
     def __init__(self, inChannels, outChannels, kernel=1, bias=False):
         super().__init__()
