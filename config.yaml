@@ -1,10 +1,10 @@
-# Configuration file for training SegNeXt model on our dataset
+# Configuration file for training CrossNet model on our dataset
 
 gpus_to_use: '0' # Use first GPU, change as needed
 DPI: 300
 LOG_WANDB: False
 
-project_name: 'SegNeXt'
+project_name: 'CrossNet'
 experiment_name: 'isic_segmentation_model'
 
 log_directory: "./logs/"
@@ -26,27 +26,33 @@ output_stride: 4
 input_channels: 3
 label_smoothing: 0.0
 batch_size: 4  # Increased batch size since images are smaller
-WEIGHT_DECAY: 0.00005
-stochastic_drop_path: 2e-1
+WEIGHT_DECAY: 0.01  # Updated from 0.00005 to match CrossNet paper
+stochastic_drop_path: 0.1  # Updated from 2e-1
 layer_scaling_val: 1e-1
 
+# Model architecture parameters
+embed_dims: [64, 128, 320, 512]  # Updated from [32, 64, 460, 256]
+ffn_ratios: [8, 8, 4, 4]         # Updated from [4, 4, 4, 4]
+depths: [3, 3, 12, 3]            # Updated from [3, 3, 5, 2]
+
 # learning rate
-learning_rate: 0.001
-lr_schedule: 'cos'
+learning_rate: 0.00006  # Updated from 0.001 to match CrossNet paper
+lr_schedule: 'poly'     # Updated from 'cos'
 epochs: 50
-warmup_epochs: 3
+warmup_epochs: 5        # Updated from 3
 norm_typ: 'batch_norm'  # Use 'sync_bn' for multi-GPU
 BN_MOM: 0.9
 SyncBN_MOM: 3e-4
 
-# Hamburger Parameters
-ham_channels: 512
-put_cheese: True
+# Cross Decoder Parameters
+ham_channels: 64   # Changed from 512 to match intermediate_channels
+decoder_image_size: 128  # New parameter for fixed decoder size
+align_corners: false     # New parameter for interpolation
 
-# CrossNeXt Decoder Parameters
-crossnext_num_heads: 8          # Number of attention heads for cross-axis attention
-crossnext_kernel_sizes: [7, 11, 21]  # Kernel sizes for multi-scale strip convolutions
-crossnext_norm_type: 'WithBias'      # Type of normalization in attention
+# Cross Attention Parameters
+cross_num_heads: 8          # Changed from crossnext_num_heads
+cross_kernel_sizes: [7, 11, 21]  # Changed from crossnext_kernel_sizes
+cross_norm_type: 'WithBias'      # Changed from crossnext_norm_type
 
 DUAL: False
 SPATIAL: TRUE
